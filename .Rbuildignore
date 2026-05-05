@@ -1,0 +1,5 @@
+^.*\.Rproj$
+^\.Rproj\.user$
+^\.Rhistory$
+^R/README\.md$
+^inst/dev\.R$

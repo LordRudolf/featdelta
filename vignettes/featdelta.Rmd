@@ -1,0 +1,386 @@
+---
+title: "Getting started with featdelta"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Getting started with featdelta}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+## Why featdelta exists
+
+`featdelta` is for R users who create features in R but need those features to
+live in a database.
+
+In many analytics projects, the raw observations are stored in a database and
+new rows arrive over time. The feature engineering logic, however, may be easier
+to write, test, and maintain in R. This creates a practical problem: after the R
+code computes the features, those values still need to be stored in a database
+table so they can be reused by modelling scripts, dashboards, monitoring jobs,
+or other downstream systems.
+
+`featdelta` provides an automated pipeline for that workflow. You define feature
+expressions in R, and the package handles the database-oriented steps around
+them:
+
+1. storing feature definitions in a reusable object;
+2. finding raw rows that do not yet have features;
+3. computing features for those missing rows;
+4. creating or extending the database feature table;
+5. inserting or updating the computed feature values.
+
+The goal is to reduce the amount of repeated code needed to refresh feature
+tables. Instead of rebuilding an analysis dataset by hand each time new raw data
+arrives, you can keep a persistent feature table in the database and update it
+incrementally.
+
+## Where this helps
+
+This pattern appears in many applied data workflows.
+
+For example, in a daily market-data workflow, a database table may be updated
+with the latest closing prices after each trading day. Once the new prices are
+available, an analyst may calculate indicators in R and store them in a separate
+feature table. On the next day, the pipeline should process only the newly
+available observations rather than rebuilding the entire history.
+
+In a credit-risk workflow, new loan or credit-card applications may arrive every
+day. Feature engineering often involves transformed variables that are more
+useful for modelling than the raw input columns. For example, an analyst may
+derive ratios, delay summaries, utilization measures, or other scorecard inputs
+from the raw application and bureau data. If these features are recreated only
+inside ad-hoc modelling scripts, refreshing the dataset with recent applications
+can become a recurring manual task. A persistent feature table makes the
+transformed variables easier to reuse for model development, validation, and
+monitoring.
+
+In a business-intelligence workflow, a reporting tool may need variables that
+are difficult to create directly in the BI layer. These might come from an R
+model, a specialized matching algorithm, or domain-specific transformation code.
+If the results are pushed back to the database, the BI tool can read them like
+ordinary columns.
+
+The details differ across domains, but the workflow is similar: raw data changes
+over time, feature logic is maintained in R, and the computed features are more
+useful when they are available in the database.
+
+## A small running example
+
+This vignette uses an in-memory SQLite database and the built-in `mtcars`
+dataset. The database is tiny and the example features are intentionally simple,
+but the workflow mirrors a real production pattern:
+
+1. finding which raw observations are new;
+2. recomputing only the features that are missing;
+3. keeping feature definitions organized;
+4. creating or extending the database table where the features live;
+5. pushing the newly computed values back to the database safely.
+
+Before demonstrating `featdelta`, we first set up the database. In this example,
+we pretend that the rows arrive in two batches:
+
+* at the end of day one, we have observed the first 20 rows of the `mtcars`
+  dataset;
+* at the end of day two, we observe the next 10 rows, corresponding to ids 21 to
+  30. These rows are not available on day one.
+
+Our goal is to add new features to a database feature table at the end of each
+day:
+
+* whether the transmission is automatic or manual, stored as a text field;
+* the horsepower-to-cylinder ratio;
+* the weight per horsepower unit.
+
+```{r}
+library(DBI)
+library(RSQLite)
+library(featdelta)
+
+cars <- mtcars
+cars$id <- seq_len(nrow(cars))
+
+# Name of the unique row identifier used throughout the pipeline.
+key <- "id"
+
+day_one <- 1:20
+day_two <- 21:30
+```
+
+We use an in-memory SQLite database to mimic a real R-to-database workflow. We
+establish the database connection with `DBI::dbConnect()`. For this small
+example, no database credentials are needed.
+
+Next, `DBI::dbWriteTable()` pushes the first batch of rows from R into the
+database and creates a table named `raw_cars`. This table represents the raw
+observations for which we want to create separate features.
+
+After the raw data has been written to the database, we can inspect it using a
+simple SQL query.
+
+```{r}
+con <- dbConnect(SQLite(), ":memory:")
+dbWriteTable(con, "raw_cars", cars[day_one, ], overwrite = TRUE)
+
+dbGetQuery(con, "SELECT id, mpg, cyl, hp, wt, am FROM raw_cars ORDER BY id")
+```
+
+In real-world scenarios, the data needed for feature engineering is rarely stored
+in one simple table. It is often selected from several database tables with
+joins, filters, and other selection criteria. For that reason, the
+database-to-R interface in this vignette uses a SQL query instead of referring
+directly to the `raw_cars` table.
+
+In the snippet below, we define the source dataset as rows where `id > 15`.
+This demonstrates that the dataset to be processed can be created with a custom
+query. There is one important requirement: each returned row must have a unique
+identifier. That is why we defined the `key` variable earlier.
+
+We can bring this source dataset into the R session with
+`DBI::dbGetQuery(con, source_sql)`.
+
+```{r}
+source_sql <- "SELECT * FROM raw_cars WHERE id > 15 ORDER BY id"
+
+dbGetQuery(con, source_sql)
+```
+
+At this point, the source table contains raw observations, but the feature table
+does not exist yet.
+
+The rest of the vignette demonstrates how the feature table can be created and
+refreshed with `featdelta`. Later, we summarize which manual steps this pipeline
+replaces.
+
+## Feature definitions live in R
+
+Start by defining features. These are ordinary R expressions evaluated against
+the raw data returned by `source_sql`.
+
+```{r}
+defs <- fd_define(
+  transmission = ifelse(am == 1, "automatic", "manual"),
+  hp_per_cyl = hp / cyl,
+  wt_per_hp = wt / hp
+)
+
+defs
+```
+
+This is one of the first conveniences of `featdelta`: feature definitions are
+stored as an object. They can be printed, reviewed, reused, tested, and passed
+to the pipeline. The expressions are not scattered across one-off scripts.
+
+Before writing to the database, we can also compute locally to see the shape of
+the feature table that will be produced.
+
+```{r}
+raw_preview <- dbGetQuery(con, source_sql)
+
+fd_compute(
+  data = raw_preview,
+  defs = defs,
+  key = key
+)
+```
+
+The output contains the key column plus the computed features. This is the
+table shape we want to persist.
+
+In this example, we define features in the simplest possible way: one expression
+per feature. In real projects, feature definitions may be generated by longer R
+scripts and may produce many columns. Later vignettes will cover richer
+definition patterns, including multi-column feature blocks.
+
+## First run: create the feature table
+
+Now let `featdelta` run the full pipeline. The important result is the database
+table it creates. In this example, we call the new database table
+`car_features`.
+
+```{r}
+run_day_one <- fd_run(
+  con = con,
+  sql = source_sql,
+  defs = defs,
+  key = key,
+  feat_table_name = "car_features",
+  verbose = FALSE
+)
+
+dbGetQuery(con, "SELECT * FROM car_features ORDER BY id")
+```
+
+The R expressions were evaluated against the selected raw rows, and the result
+was stored as a persistent table. You can inspect that table with an ordinary SQL
+query, just as you would inspect any other database table.
+
+That is the central idea: the data scientist can write feature logic in R, while
+the computed features are stored in a database table that other workflows can
+reuse.
+
+## Second run: process only new rows
+
+Now pretend time passes and more raw observations arrive.
+
+```{r}
+dbAppendTable(con, "raw_cars", cars[day_two, ])
+
+dbGetQuery(
+  con,
+  "SELECT id, mpg, cyl, hp, wt, am FROM raw_cars WHERE id > 15 ORDER BY id DESC"
+)
+```
+
+The query above shows that new rows have been added to the raw table. The
+feature table, however, has not been refreshed yet. If we inspect it now, it
+still ends at id 20, even though raw rows up to id 30 are available.
+
+```{r}
+dbGetQuery(
+  con,
+  "SELECT * FROM car_features ORDER BY id DESC"
+)
+```
+
+This is the point where manual pipelines become repetitive: you need to compare
+raw keys with feature-table keys, build feature rows only for the missing raw
+observations, and append them without duplicating existing rows.
+
+With `featdelta`, run the same pipeline again and inspect the database table.
+
+```{r}
+run_day_two <- fd_run(
+  con = con,
+  sql = source_sql,
+  defs = defs,
+  key = key,
+  feat_table_name = "car_features",
+  verbose = FALSE
+)
+
+dbGetQuery(con, "SELECT * FROM car_features ORDER BY id DESC")
+```
+
+The existing feature rows were not duplicated. `featdelta` detected the raw rows
+whose keys were missing from `car_features`, computed features only for those
+rows, and inserted them into the database table.
+
+## Add a new feature later
+
+Feature engineering is rarely finished on the first day. Suppose we decide that
+we also want a power-to-weight feature.
+
+We can define a new version of the feature set and run the same pipeline again.
+This time, the definitions include the new `power_to_weight` feature.
+
+```{r}
+defs_v2 <- fd_define(
+  transmission = ifelse(am == 1, "automatic", "manual"),
+  hp_per_cyl = hp / cyl,
+  wt_per_hp = wt / hp,
+  power_to_weight = hp / wt
+)
+
+run_refresh <- fd_run(
+  con = con,
+  sql = source_sql,
+  defs = defs_v2,
+  key = key,
+  feat_table_name = "car_features",
+  fetch_mode = "all",
+  verbose = FALSE
+)
+
+dbGetQuery(con, "SELECT * FROM car_features ORDER BY id DESC")
+```
+
+Here we use `fetch_mode = "all"`, which tells `fd_run()` to refresh the features
+for all rows returned by `source_sql`, including rows that already existed in
+the feature table. This ensures that old rows are not missing the newly added
+feature. In a real workflow, this is the difference between maintaining a
+database feature table over time and repeatedly rebuilding analysis datasets by
+hand.
+
+## What the pipeline replaces
+
+Without `featdelta`, the workflow usually grows into a script that does all of
+this manually:
+
+1. run a source SQL query;
+2. check which keys already exist in the feature table;
+3. keep only the missing rows;
+4. evaluate feature expressions in R;
+5. create the target table if it does not exist;
+6. alter the target table when new feature columns appear;
+7. insert or update rows;
+8. inspect whether the run did what you expected.
+
+That script can be written, but it tends to become repetitive and fragile.
+`featdelta` makes those steps explicit:
+
+```{r, eval = FALSE}
+defs <- fd_define(
+  feature_a = some_r_expression,
+  feature_b = another_r_expression
+)
+
+fd_run(
+  con = con,
+  sql = "SELECT * FROM raw_table",
+  defs = defs,
+  key = "id",
+  feat_table_name = "feature_table"
+)
+```
+
+For most users, this is the main workflow: define features in R, then run the
+database pipeline.
+
+## Inspect the run when needed
+
+The database table is the main result, but `fd_run()` also returns a structured
+report. The report is useful when developing, debugging, or monitoring the
+pipeline.
+
+```{r}
+run_report <- fd_run(
+  con = con,
+  sql = source_sql,
+  defs = defs_v2,
+  key = key,
+  feat_table_name = "car_features",
+  fetch_mode = "all",
+  return_data = "features",
+  preview_n = 3,
+  verbose = FALSE
+)
+
+run_report
+```
+
+The report tells you how many rows were fetched, which features were computed,
+and how many rows were targeted for insert or update. It is there when you need
+visibility, but it does not get in the way of the core workflow.
+
+## Where to go next
+
+This vignette introduced the main story: create feature logic in R, keep a
+database feature table up to date, and avoid rebuilding the same feature dataset
+by hand.
+
+The next topics are:
+
+1. writing richer feature definitions with `fd_define()` and `fd_block()`;
+2. using `fd_fetch()` and `fd_upsert()` directly;
+3. production patterns for failures, previews, refreshes, and reports.
+
+```{r cleanup, include = FALSE}
+dbDisconnect(con)
+```

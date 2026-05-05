@@ -1,0 +1,371 @@
+---
+title: "Feature definitions workshop"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Feature definitions workshop}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+## Purpose of this workshop
+
+The first vignette showed how `featdelta` helps move features created in R into
+a database table. This workshop focuses on the part of the workflow that most
+data scientists will edit most often: the feature definitions.
+
+Feature definitions are the bridge between exploratory R code and a repeatable
+feature pipeline. When features are kept only as lines inside an ad-hoc script,
+they are harder to review, reuse, test, and refresh. With `fd_define()`, the
+feature logic becomes a structured object. That object can then be computed
+locally with `fd_compute()` or passed to `fd_run()` for the full database
+pipeline.
+
+In this workshop, we will build feature definitions step by step:
+
+1. simple one-column features;
+2. features that depend on earlier features;
+3. reusable definitions supplied programmatically;
+4. multi-column scripts with `fd_block()`;
+5. function-based blocks that generate an unknown number of columns.
+
+
+## Workshop data
+
+We will use a small version of the built-in `mtcars` dataset. The data is simple
+enough to inspect directly, but it lets us demonstrate the same patterns used in
+larger feature engineering projects.
+
+```{r}
+library(featdelta)
+
+raw_cars <- mtcars
+raw_cars$car_id <- seq_len(nrow(raw_cars))
+
+raw_cars <- raw_cars[, c("car_id", "mpg", "cyl", "disp", "hp", "wt", "am")]
+
+head(raw_cars)
+```
+
+The `car_id` column is the key. It identifies each row and will be preserved in
+the computed feature table.
+
+## Start with simple feature definitions
+
+The most direct use of `fd_define()` is to write one expression per feature.
+Each named expression becomes one output column.
+
+```{r}
+defs_basic <- fd_define(
+  transmission = ifelse(am == 1, "automatic", "manual"),
+  hp_per_cyl = hp / cyl,
+  wt_per_hp = wt / hp
+)
+
+defs_basic
+```
+
+The printed object gives a quick overview of the feature set. 
+Note that the feature names and expressions are stored together and can be passed
+around as one object.
+
+Now compute the definitions on the raw data.
+
+```{r}
+features_basic <- fd_compute(
+  data = raw_cars,
+  defs = defs_basic,
+  key = "car_id"
+)
+
+head(features_basic)
+```
+
+The output contains the key column plus the computed features. This is the
+feature table shape that can later be written to the database by `fd_run()`.
+
+## Use earlier features in later features
+
+Definitions are evaluated in order. This means a later feature can use columns
+created by earlier definitions in the same `fd_compute()` call.
+
+```{r}
+defs_ordered <- fd_define(
+  hp_per_cyl = hp / cyl,
+  strong_engine = hp_per_cyl > 30,
+  engine_label = ifelse(strong_engine, "strong", "regular")
+)
+
+features_ordered <- fd_compute(
+  data = raw_cars,
+  defs = defs_ordered,
+  key = "car_id"
+)
+
+head(features_ordered)
+```
+
+This is useful when your feature engineering naturally has stages. You can first
+create a base transformation, then reuse it in flags, labels, scores, or other
+derived features. The important habit is to keep the order intentional. If a
+later feature uses `hp_per_cyl`, then `hp_per_cyl` must be defined earlier.
+
+## Keep programmatic definitions reusable
+
+Sometimes feature definitions are created outside the `fd_define()` call. For
+example, you might keep a small library of expressions, generate definitions
+from a configuration file, or reuse the same expression across projects.
+
+```{r}
+log_hp_expr <- expression(log(hp))
+heavy_car_expr <- expression(wt > 3.5)
+
+defs_programmatic <- fd_define(
+  log_hp = log_hp_expr,
+  heavy_car = heavy_car_expr
+)
+
+features_programmatic <- fd_compute(
+  data = raw_cars,
+  defs = defs_programmatic,
+  key = "car_id"
+)
+
+head(features_programmatic)
+```
+
+The benefit is administrative: the feature set can be built from named pieces
+instead of being rewritten by hand each time. This matters when the feature
+catalog becomes larger than a few simple columns.
+
+## Use fd_block() when one feature step returns several columns
+
+One expression per feature is convenient for small feature sets. In real
+projects, however, a single conceptual feature step may naturally produce
+several columns. That is what `fd_block()` is for.
+
+An `fd_block()` is a multi-column definition step. It must return a
+`data.frame`, and each column of that data frame becomes a feature.
+
+```{r}
+defs_block <- fd_define(
+  engine_ratios = fd_block({
+    data.frame(
+      hp_per_cyl = hp / cyl,
+      disp_per_cyl = disp / cyl,
+      wt_per_hp = wt / hp
+    )
+  })
+)
+
+features_block <- fd_compute(
+  data = raw_cars,
+  defs = defs_block,
+  key = "car_id"
+)
+
+head(features_block)
+```
+
+This is useful when you want one named definition step, such as
+`engine_ratios`, to produce a small family of related columns.
+
+## Write a small script inside fd_block()
+
+The block body does not have to be a single `data.frame()` call. It can be a
+small R script. You can create temporary variables, reuse intermediate
+calculations, and return only the final columns you want to store.
+
+```{r}
+defs_script_block <- fd_define(
+  engine_script = fd_block({
+    hp_per_cyl <- hp / cyl
+    disp_per_cyl <- disp / cyl
+
+    ratio_average <- (hp_per_cyl + disp_per_cyl) / 2
+    high_ratio <- ratio_average > stats::median(ratio_average, na.rm = TRUE)
+
+    data.frame(
+      hp_per_cyl = hp_per_cyl,
+      disp_per_cyl = disp_per_cyl,
+      engine_ratio_average = ratio_average,
+      high_engine_ratio = high_ratio
+    )
+  })
+)
+
+features_script_block <- fd_compute(
+  data = raw_cars,
+  defs = defs_script_block,
+  key = "car_id"
+)
+
+head(features_script_block)
+```
+
+This pattern is often easier to read than forcing every intermediate expression
+into a separate top-level feature. Temporary variables stay inside the block,
+while the returned data frame defines the columns that become part of the final
+feature table.
+
+## Use function-based blocks for larger feature scripts
+
+As feature logic grows, it is often better to move it into a regular R function.
+This is especially helpful when you want to test the feature script separately,
+reuse it across projects, or keep the `fd_define()` call compact.
+
+```{r}
+make_engine_features <- function(data) {
+  hp_per_cyl <- data$hp / data$cyl
+  disp_per_cyl <- data$disp / data$cyl
+
+  data.frame(
+    hp_per_cyl = hp_per_cyl,
+    disp_per_cyl = disp_per_cyl,
+    engine_index = hp_per_cyl + disp_per_cyl
+  )
+}
+
+defs_function_block <- fd_define(
+  engine_features = fd_block(make_engine_features)
+)
+
+features_function_block <- fd_compute(
+  data = raw_cars,
+  defs = defs_function_block,
+  key = "car_id"
+)
+
+head(features_function_block)
+```
+
+Function-based blocks are a good fit for code that already looks like a small
+feature-engineering script. The function receives the current working data and
+returns a `data.frame` of feature columns.
+
+## Generate an unknown number of features in a loop
+
+Some feature sets are not known column by column in advance. For example, you
+might want to apply the same transformation to a selected group of numeric
+variables. A function-based block can generate those columns in a loop.
+
+```{r}
+make_scaled_features <- function(data) {
+  vars <- c("hp", "disp", "wt")
+  out <- list()
+
+  for (var in vars) {
+    center <- mean(data[[var]], na.rm = TRUE)
+    spread <- stats::sd(data[[var]], na.rm = TRUE)
+
+    out[[paste0(var, "_scaled")]] <- (data[[var]] - center) / spread
+  }
+
+  as.data.frame(out)
+}
+
+defs_loop_block <- fd_define(
+  scaled_inputs = fd_block(make_scaled_features)
+)
+
+features_loop_block <- fd_compute(
+  data = raw_cars,
+  defs = defs_loop_block,
+  key = "car_id"
+)
+
+head(features_loop_block)
+```
+
+This pattern is useful when the number of output columns depends on a vector of
+input names, a configuration object, or another piece of project logic. The
+important rule remains the same: the block must return a data frame with one row
+per input row.
+
+## Combine ordinary features and blocks
+
+You do not have to choose between ordinary definitions and blocks. A single
+definition object can contain both. Later steps can also use columns produced by
+earlier steps, including columns produced by blocks.
+
+```{r}
+defs_combined <- fd_define(
+  transmission = ifelse(am == 1, "automatic", "manual"),
+  engine_features = fd_block(make_engine_features),
+  scaled_inputs = fd_block(make_scaled_features),
+  engine_per_weight = engine_index / wt
+)
+
+features_combined <- fd_compute(
+  data = raw_cars,
+  defs = defs_combined,
+  key = "car_id"
+)
+
+head(features_combined)
+```
+
+This is where feature definitions become a practical organizing tool. You can
+keep simple expressions simple, move related feature families into blocks, and
+still evaluate the full set as one ordered pipeline.
+
+## Declare expected block outputs when useful
+
+Sometimes you want a block to have an expected output schema. This is useful
+when the block may return only some columns in some situations, but the database
+feature table should still have a stable set of columns.
+
+```{r}
+defs_expected <- fd_define(
+  optional_engine_flags = fd_block(
+    {
+      data.frame(
+        high_hp = hp > 150
+      )
+    },
+    expected_names = c("high_hp", "high_disp")
+  )
+)
+
+features_expected <- fd_compute(
+  data = raw_cars,
+  defs = defs_expected,
+  key = "car_id"
+)
+
+head(features_expected)
+```
+
+The block returned `high_hp`, but `high_disp` was declared as an expected output.
+`fd_compute()` includes the missing expected column and fills it with `NA`. This
+can help when you want the feature table to keep a predictable schema.
+
+## What to remember
+
+Feature definitions are where the package lets you turn R feature engineering
+into a reusable pipeline component.
+
+Use ordinary `fd_define()` expressions when each feature is simple and readable
+on one line. Use `fd_block()` when a feature step naturally produces several
+columns, needs temporary variables, or belongs in a reusable function. Use
+function-based blocks when the logic is long enough to test separately or when
+the output columns are generated programmatically.
+
+Once the definitions object is ready, the same object can be used in two ways:
+
+```{r, eval = FALSE}
+# Local computation while developing feature logic
+fd_compute(raw_data, defs, key = "id")
+
+# Full database pipeline once the definitions are ready
+fd_run(con, sql, defs, key = "id", feat_table_name = "feature_table")
+```
+
+That is the main workflow: develop feature logic in R, store it as a definitions
+object, test it locally, and then use it in the incremental database pipeline.

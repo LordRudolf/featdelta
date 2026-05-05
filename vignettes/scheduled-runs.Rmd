@@ -1,0 +1,499 @@
+---
+title: "Scheduling featdelta runs"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Scheduling featdelta runs}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+## Purpose of this tutorial
+
+The earlier vignettes showed how to define features and run the database
+pipeline with `fd_run()`. In practice, you usually do not want to open RStudio
+and run that command manually every day. You want a script that can be executed
+by the operating system.
+
+This tutorial shows how to set up that script and schedule it:
+
+1. create a small project folder;
+2. save an R script that connects to the database and calls `fd_run()`;
+3. test the script manually with `Rscript`;
+4. schedule the script with Windows Task Scheduler or cron;
+5. inspect a log file after each run.
+
+This vignette is written as an instruction rather than as executed package code.
+The database connection uses imaginary PostgreSQL credentials. You should adapt
+the connection details, SQL query, feature definitions, and table names to your
+own project.
+
+The example is not meant to be copied without changes. It assumes a specific
+database, a specific raw table, and a specific set of columns. Your own script
+will differ in those places.
+
+## Before you start
+
+This tutorial assumes that the previous vignettes have already explained what
+`fd_run()` does. Here we focus only on scheduling.
+
+You need:
+
+1. R installed on the machine that will run the job;
+2. the `featdelta` package installed in that R library;
+3. the DBI driver for your database, such as `RPostgres` or `RMariaDB`;
+4. permission to write to the target feature table;
+5. permission to create scheduled tasks on the machine.
+
+Operating-system schedulers are normally minute-based. Windows Task Scheduler
+and cron are good for running jobs every minute, hourly, daily, or on a business
+schedule. They are not meant for second-by-second demonstrations, so this
+tutorial uses minute-level schedules.
+
+## Create a project folder
+
+Create a small folder for the scheduled pipeline. For example:
+
+```text
+featdelta_sensor_pipeline/
+  scripts/
+    run_featdelta.R
+  logs/
+```
+
+On Windows, this could be:
+
+```text
+C:/featdelta_sensor_pipeline/
+```
+
+On Linux or macOS, this could be:
+
+```text
+/home/analyst/featdelta_sensor_pipeline/
+```
+
+The important point is that the scheduled script should use stable, absolute
+paths. A scheduled job may not start in the same working directory as your
+interactive R session.
+
+## Create the R script
+
+Create this file:
+
+```text
+C:/featdelta_sensor_pipeline/scripts/run_featdelta.R
+```
+
+On Linux or macOS, use the equivalent path in your project folder, for example:
+
+```text
+/home/analyst/featdelta_sensor_pipeline/scripts/run_featdelta.R
+```
+
+Save the following script as `run_featdelta.R`.
+
+Before looking at the script, here is the scenario it assumes:
+
+* there is a PostgreSQL database available at a private company host;
+* the database name is `analytics`;
+* credentials are stored in the environment variables `ANALYTICS_DB_USER` and
+  `ANALYTICS_DB_PASSWORD`;
+* the raw data is in `raw_schema.device_readings`;
+* the raw query returns one row per equipment reading;
+* the unique key column is `reading_id`;
+* the raw columns used for features are `temperature`, `vibration`, `pressure`,
+  and `runtime_hours`;
+* the computed features should be stored in
+  `feature_schema.reading_features`;
+* during testing, the script will be scheduled every minute.
+
+For this example, the features are:
+
+* `temp_above_80`: whether the reading temperature is above 80;
+* `vibration_score`: a simple interaction between vibration and runtime;
+* `pressure_high`: whether pressure is at or above a chosen threshold;
+* `maintenance_flag`: whether the reading should be flagged for follow-up.
+
+In your own project, replace these with the transformations that make sense for
+your raw table.
+
+```r
+library(DBI)
+library(RPostgres)
+library(featdelta)
+
+# Use an absolute project directory so the script works from a scheduler.
+project_dir <- "C:/featdelta_sensor_pipeline"
+log_path <- file.path(project_dir, "logs", "featdelta-run.log")
+
+log_line <- function(...) {
+  cat(
+    format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+    " | ",
+    paste(..., collapse = ""),
+    "\n",
+    file = log_path,
+    append = TRUE,
+    sep = ""
+  )
+}
+
+con <- dbConnect(
+  RPostgres::Postgres(),
+  # Replace these connection settings with your own database details.
+  host = "database.company.local",
+  port = 5432,
+  dbname = "analytics",
+  user = Sys.getenv("ANALYTICS_DB_USER"),
+  password = Sys.getenv("ANALYTICS_DB_PASSWORD")
+)
+
+on.exit(dbDisconnect(con), add = TRUE)
+
+# Replace this query with the raw dataset you want to process.
+# The query must return the key column and every raw column used below.
+source_sql <- "
+  SELECT
+    reading_id,
+    device_id,
+    temperature,
+    vibration,
+    pressure,
+    runtime_hours
+  FROM raw_schema.device_readings
+  WHERE reading_status = 'ready'
+  ORDER BY reading_id
+"
+
+# Replace these definitions with your own feature logic.
+defs <- fd_define(
+  temp_above_80 = temperature > 80,
+  vibration_score = vibration * runtime_hours,
+  pressure_high = pressure >= 38,
+  maintenance_flag = temp_above_80 | vibration_score > 80 | pressure_high
+)
+
+report <- fd_run(
+  con = con,
+  sql = source_sql,
+  defs = defs,
+  # Replace the key and feature table with your project-specific values.
+  key = "reading_id",
+  feat_table_name = "feature_schema.reading_features",
+  fail_fast = FALSE,
+  verbose = FALSE
+)
+
+would_insert <- if (is.null(report$upsert)) {
+  NA_integer_
+} else {
+  report$upsert$counts$would_insert
+}
+
+would_update <- if (is.null(report$upsert)) {
+  NA_integer_
+} else {
+  report$upsert$counts$would_update
+}
+
+log_line(
+  "success=", report$success,
+  ", stage=", report$stage,
+  ", fetched=", report$fetch$n_rows,
+  ", inserts=", would_insert,
+  ", updates=", would_update
+)
+
+if (!isTRUE(report$success)) {
+  log_line("error=", report$error$message)
+  stop(report$error$message)
+}
+```
+
+This script does four things:
+
+1. opens a database connection;
+2. defines the source SQL query;
+3. defines the R feature expressions;
+4. calls `fd_run()` and writes a compact log line.
+
+The parts you normally change are:
+
+1. `project_dir`, so logs are written to your project folder;
+2. `dbConnect()`, so the script reaches your database;
+3. `source_sql`, so the script selects your raw data;
+4. `defs`, so the script computes your features;
+5. `key`, so `featdelta` knows the unique row identifier;
+6. `feat_table_name`, so features are written to the correct database table;
+7. the scheduler frequency, so the job runs when your raw data is ready.
+
+For MySQL or MariaDB, the connection part would look similar, but with
+`RMariaDB`:
+
+```r
+library(DBI)
+library(RMariaDB)
+
+con <- dbConnect(
+  RMariaDB::MariaDB(),
+  host = "database.company.local",
+  port = 3306,
+  dbname = "analytics",
+  user = Sys.getenv("ANALYTICS_DB_USER"),
+  password = Sys.getenv("ANALYTICS_DB_PASSWORD")
+)
+```
+
+If automatic dialect detection is not sufficient in your environment, pass the
+dialect explicitly:
+
+```r
+report <- fd_run(
+  con = con,
+  sql = source_sql,
+  defs = defs,
+  key = "reading_id",
+  feat_table_name = "feature_schema.reading_features",
+  dialect = "postgres",
+  fail_fast = FALSE,
+  verbose = FALSE
+)
+```
+
+For MySQL or MariaDB, use `dialect = "mysql"`.
+
+## Store credentials outside the script
+
+The example reads credentials from environment variables:
+
+```r
+Sys.getenv("ANALYTICS_DB_USER")
+Sys.getenv("ANALYTICS_DB_PASSWORD")
+```
+
+This is safer than writing passwords directly into the R file. The exact way to
+set environment variables depends on your operating system and security setup.
+
+For local testing, you can set them temporarily inside an R session:
+
+```r
+Sys.setenv(ANALYTICS_DB_USER = "analyst")
+Sys.setenv(ANALYTICS_DB_PASSWORD = "secret")
+```
+
+For production, use your organization's preferred method, such as user-level
+environment variables, a secrets manager, or a protected configuration file.
+
+## Test the script manually
+
+Before scheduling anything, run the script manually from a terminal.
+
+On Windows PowerShell:
+
+```powershell
+& "C:\Program Files\R\R-4.5.2\bin\Rscript.exe" "C:\featdelta_sensor_pipeline\scripts\run_featdelta.R"
+```
+
+On Linux or macOS:
+
+```bash
+Rscript /home/analyst/featdelta_sensor_pipeline/scripts/run_featdelta.R
+```
+
+Then inspect the log file:
+
+```text
+C:/featdelta_sensor_pipeline/logs/featdelta-run.log
+```
+
+A successful line might look like this:
+
+```text
+2026-05-05 09:00:04 | success=TRUE, stage=complete, fetched=12, inserts=12, updates=0
+```
+
+If the script fails manually, fix that first. A scheduler will not make an
+unreliable script more reliable. The script must be able to run from a plain
+terminal command before you schedule it.
+
+## Windows: schedule with taskscheduleR
+
+On Windows, you can use the `taskscheduleR` package to create a Windows Task
+Scheduler job from R.
+
+Install it if needed:
+
+```r
+install.packages("taskscheduleR")
+```
+
+Then run this once from an interactive R session:
+
+```r
+library(taskscheduleR)
+
+taskscheduler_create(
+  taskname = "featdelta_sensor_pipeline",
+  rscript = "C:/featdelta_sensor_pipeline/scripts/run_featdelta.R",
+  schedule = "MINUTE",
+  starttime = format(Sys.time() + 70, "%H:%M"),
+  modifier = 1
+)
+```
+
+This creates a task that runs the script every minute. That is a useful testing
+frequency because you can watch the log file and database table change shortly
+after creating the task.
+
+In this demonstration, "every minute" is only a testing schedule. A real
+production schedule should match the arrival pattern of your raw data. For
+example, if new sensor readings are loaded every hour, schedule the job after
+that hourly load. If a warehouse table is refreshed once per night, schedule
+`fd_run()` after the nightly refresh.
+
+To list scheduled tasks created through `taskscheduleR`:
+
+```r
+taskscheduler_ls()
+```
+
+To remove the test task:
+
+```r
+taskscheduler_delete("featdelta_sensor_pipeline")
+```
+
+For production, use a less aggressive schedule, such as hourly, daily, or after
+the expected raw-data load has finished.
+
+## Linux or macOS: schedule with cronR
+
+On Linux or macOS, you can use the `cronR` package to create a cron job.
+
+Install it if needed:
+
+```r
+install.packages("cronR")
+```
+
+Then run this once from an interactive R session:
+
+```r
+library(cronR)
+
+cmd <- cron_rscript(
+  rscript = "/home/analyst/featdelta_sensor_pipeline/scripts/run_featdelta.R",
+  rscript_log = "/home/analyst/featdelta_sensor_pipeline/logs/featdelta-cron.log",
+  log_append = TRUE
+)
+
+cron_add(
+  command = cmd,
+  frequency = "minutely",
+  id = "featdelta_sensor_pipeline",
+  description = "Run featdelta sensor feature pipeline"
+)
+```
+
+This creates a cron job that runs every minute. During testing, inspect:
+
+```text
+/home/analyst/featdelta_sensor_pipeline/logs/featdelta-run.log
+/home/analyst/featdelta_sensor_pipeline/logs/featdelta-cron.log
+```
+
+To list cron jobs:
+
+```r
+cron_ls()
+```
+
+To remove the test job:
+
+```r
+cron_rm(id = "featdelta_sensor_pipeline")
+```
+
+For production, use a schedule that matches your data refresh cycle. For
+example, a daily run after midnight, an hourly run during business hours, or a
+custom cron expression.
+
+## What to monitor
+
+At minimum, monitor the log file written by the script. Each run should tell you:
+
+1. whether the run succeeded;
+2. which stage completed;
+3. how many rows were fetched;
+4. how many rows were inserted;
+5. how many rows were updated.
+
+You may also want to query the feature table directly:
+
+```sql
+SELECT COUNT(*) AS n_rows
+FROM feature_schema.reading_features;
+```
+
+Or inspect the most recent keys:
+
+```sql
+SELECT *
+FROM feature_schema.reading_features
+ORDER BY reading_id DESC
+LIMIT 20;
+```
+
+The exact monitoring setup depends on your database and scheduler, but the
+principle is simple: make each scheduled run leave evidence that it ran and what
+it changed.
+
+## Common scheduler issues
+
+Scheduled jobs often fail for environmental reasons rather than because of
+`fd_run()` itself.
+
+Common issues include:
+
+1. the scheduler uses a different R installation than RStudio;
+2. the scheduled R library does not have `featdelta` or the DBI driver
+   installed;
+3. environment variables are available interactively but not to the scheduled
+   process;
+4. the script uses relative paths;
+5. the scheduler account does not have database access;
+6. the scheduler account cannot write to the log folder.
+
+When debugging, first run the exact `Rscript` command from a terminal. Then make
+sure the scheduler runs under a user account that has the same package library,
+environment variables, file permissions, and database permissions.
+
+## What to remember
+
+Scheduling is not part of `featdelta` itself. The package gives you the
+repeatable R feature pipeline. Windows Task Scheduler or cron runs that pipeline
+at the chosen time.
+
+The practical setup is:
+
+1. write a standalone `run_featdelta.R`;
+2. test it manually with `Rscript`;
+3. log each run;
+4. schedule it with `taskscheduleR` or `cronR`;
+5. monitor the log and feature table.
+
+## References
+
+The scheduling examples use the public documentation for:
+
+* `taskscheduleR::taskscheduler_create()`:
+  <https://rdrr.io/cran/taskscheduleR/man/taskscheduler_create.html>
+* `cronR::cron_add()` and `cronR::cron_rscript()`:
+  <https://search.r-project.org/CRAN/refmans/cronR/html/cron_add.html>
