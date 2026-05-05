@@ -134,12 +134,4 @@ out <- fd_compute(
 head(out)
 
 }
-\seealso{
-Other featdelta compute helpers: 
-\code{\link{fd_compute_complete_expected_block_outputs}()},
-\code{\link{fd_compute_diagnose_error}()},
-\code{\link{fd_compute_format_diagnostic_message}()},
-\code{\link{fd_compute_is_supported_result}()},
-\code{\link{fd_compute_validate_defs_structure}()}
-}
 \concept{featdelta compute helpers}

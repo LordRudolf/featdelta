@@ -106,7 +106,7 @@ fd_block <- function(x, expected_names = NULL, envir = NULL) {
 #'
 #' @return Either a quosure or a function.
 #'
-#' @keywords internal
+#' @noRd
 fd_block_resolve_captured_input <- function(q) {
   if (!rlang::is_quosure(q)) {
     stop("`q` must be a quosure.", call. = FALSE)
@@ -170,7 +170,7 @@ fd_block_resolve_captured_input <- function(q) {
 #'
 #' @return A normalized list suitable for class `"featdelta_block"`.
 #'
-#' @keywords internal
+#' @noRd
 normalize_fd_block_input <- function(x, env, expected_names = NULL) {
 
   # Case 1: function block
@@ -262,7 +262,7 @@ normalize_fd_block_input <- function(x, env, expected_names = NULL) {
 #'
 #' @return Invisibly returns `TRUE` on success.
 #'
-#' @keywords internal
+#' @noRd
 fd_block_validate_expected_names <- function(expected_names) {
   if (!is.character(expected_names)) {
     stop("`expected_names` must be a character vector or NULL.", call. = FALSE)
@@ -300,7 +300,7 @@ fd_block_validate_expected_names <- function(expected_names) {
 #'
 #' @return Character scalar label.
 #'
-#' @keywords internal
+#' @noRd
 fd_block_fn_label <- function(fn) {
   nm <- tryCatch(deparse(substitute(fn)), error = function(e) NULL)
 

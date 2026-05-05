@@ -17,7 +17,7 @@ clean_sql <- function(sql) {
 #' @return Logical scalar. `TRUE` if `x` inherits from `"DBIConnection"`,
 #'   otherwise `FALSE`.
 #'
-#' @keywords internal
+#' @noRd
 is_dbi_connection <- function(x) {
   inherits(x, "DBIConnection")
 }
@@ -34,7 +34,7 @@ is_dbi_connection <- function(x) {
 #' @return Logical scalar. `TRUE` if `x` inherits from `"featdelta_con"`,
 #'   otherwise `FALSE`.
 #'
-#' @keywords internal
+#' @noRd
 is_featdelta_con <- function(x) {
   inherits(x, "featdelta_con")
 }
@@ -49,7 +49,7 @@ is_featdelta_con <- function(x) {
 #' `DBI::Id(schema=..., table=...)`.
 #' For SQLite, schema-qualified names are rejected.
 #'
-#' @keywords internal
+#' @noRd
 parse_table_id <- function(dialect, table_name) {
   parts <- strsplit(table_name, ".", fixed = TRUE)[[1]]
   if (length(parts) == 1L) return(table_name)
@@ -101,7 +101,7 @@ ensure_supported_dialect <- function(dialect) {
 #'
 #' If detection fails, returns `"unknown"`; callers can decide whether to error.
 #'
-#' @keywords internal
+#' @noRd
 detect_backend <- function(con) {
   if (!inherits(con, "DBIConnection")) {
     stop("`con` must be a DBIConnection (from DBI::dbConnect()).", call. = FALSE)

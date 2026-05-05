@@ -14,8 +14,14 @@ results into a persistent feature table.
 ## Installation
 
 ```r
-install.packages("devtools")
-devtools::install_github("LordRudolf/featdelta")
+install.packages("featdelta")
+```
+
+You can install the development version from GitHub with:
+
+```r
+# install.packages("remotes")
+remotes::install_github("LordRudolf/featdelta")
 ```
 
 ## Core idea

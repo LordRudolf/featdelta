@@ -36,7 +36,7 @@ render_sql <- function(template, values) {
 #' - `{t_key}` / `{s_key}`: qualified key references for joins, e.g. `t."id"` and `s."id"`
 #' - `{limit}`: integer literal for sampling conflicts
 #'
-#' @keywords internal
+#' @noRd
 fd_sql_templates <- list(
 
   # ---- upsert: merge / write paths ----

@@ -2,16 +2,17 @@ Package: featdelta
 Type: Package
 Title: Incremental Feature Engineering with Database Persistence
 Version: 0.1.0
-Authors@R: person(given = "Rudolfs", role = c("aut", "cre"),
+Authors@R: person(given = "Rudolfs", family = "Kregers", role = c("aut", "cre"),
     email = "rudolfs.kregers@gmail.com")
-Author: Rudolfs [aut, cre]
-Maintainer: Rudolfs <rudolfs.kregers@gmail.com>
+Author: Rudolfs Kregers [aut, cre]
+Maintainer: Rudolfs Kregers <rudolfs.kregers@gmail.com>
 Description: Define feature logic in R, compute only new or unprocessed
     rows, and persist the resulting flat feature table in a database.
     The package provides an explicit incremental pipeline for fetching
     source rows, computing feature definitions, and upserting computed
     features back to a database table.
 License: GPL-3
+BugReports: https://github.com/LordRudolf/featdelta/issues
 Encoding: UTF-8
 Imports:
     DBI,

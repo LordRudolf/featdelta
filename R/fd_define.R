@@ -371,7 +371,7 @@ summary.featdelta_defs <- function(object, ...) {
 #' @return A normalized step object.
 #'
 #' @family featdelta defs helpers
-#' @keywords internal
+#' @noRd
 normalize_definition_step <- function(x, env, step_name) {
 
   if (inherits(x, "featdelta_block")) {
@@ -406,7 +406,7 @@ normalize_definition_step <- function(x, env, step_name) {
 #' @return A normalized block step object.
 #'
 #' @family featdelta defs helpers
-#' @keywords internal
+#' @noRd
 normalize_block_step <- function(x, env, step_name) {
   list(
     type = "block",
@@ -447,7 +447,7 @@ normalize_block_step <- function(x, env, step_name) {
 #' @return A quosure representing the normalized single-column definition.
 #'
 #' @family featdelta defs helpers
-#' @keywords internal
+#' @noRd
 normalize_feature_input <- function(x, env, feature_name = NULL) {
   nm <- feature_name %||% "<unknown>"
 
@@ -525,7 +525,7 @@ normalize_feature_input <- function(x, env, feature_name = NULL) {
 #'   referenced quoted-expression container.
 #'
 #' @family featdelta defs helpers
-#' @keywords internal
+#' @noRd
 maybe_unwrap_symbol <- function(q) {
   if (!rlang::is_quosure(q)) {
     stop("`q` must be a quosure.", call. = FALSE)
@@ -589,7 +589,7 @@ maybe_unwrap_symbol <- function(q) {
 #' @return Either a `featdelta_block` object or the original quosure.
 #'
 #' @family featdelta defs helpers
-#' @keywords internal
+#' @noRd
 maybe_eval_fd_block_call <- function(q) {
   if (!rlang::is_quosure(q)) {
     stop("`q` must be a quosure.", call. = FALSE)
@@ -631,7 +631,7 @@ maybe_eval_fd_block_call <- function(q) {
 #' @return Invisibly returns `TRUE` on success. Errors on invalid names.
 #'
 #' @family featdelta defs helpers
-#' @keywords internal
+#' @noRd
 fd_define_validate_step_names <- function(nm, allow_duplicates = FALSE) {
   if (is.null(nm) || any(is.na(nm)) || any(!nzchar(nm))) {
     stop("All definition steps must be named with non-empty, non-NA names.", call. = FALSE)
@@ -675,7 +675,7 @@ fd_define_validate_step_names <- function(nm, allow_duplicates = FALSE) {
 #'   steps.
 #'
 #' @family featdelta defs helpers
-#' @keywords internal
+#' @noRd
 fd_define_validate_step_defs <- function(step_defs) {
   if (!is.list(step_defs) || !length(step_defs)) {
     stop("`step_defs` must be a non-empty list.", call. = FALSE)

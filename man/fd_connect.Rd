@@ -42,12 +42,4 @@ arguments. The returned object stores the live DBI connection plus optional
 featdelta defaults such as the raw table, feature table, key column, and
 metadata settings.
 }
-\seealso{
-Other featdelta context helpers: 
-\code{\link{ctx_apply_overrides}()},
-\code{\link{ctx_build_derived}()},
-\code{\link{ctx_validate}()},
-\code{\link{make_ctx_from_args}()},
-\code{\link{resolve_ctx}()}
-}
 \concept{featdelta context helpers}

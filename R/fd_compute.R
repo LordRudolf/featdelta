@@ -321,7 +321,7 @@ fd_compute <- function(data,
 #' @return Invisibly returns `TRUE` on success. Errors on malformed defs.
 #'
 #' @family featdelta compute helpers
-#' @keywords internal
+#' @noRd
 fd_compute_validate_defs_structure <- function(defs, key = NULL) {
   steps <- defs$steps
 
@@ -485,7 +485,7 @@ fd_compute_validate_defs_structure <- function(defs, key = NULL) {
 #'
 #' @return A list with elements `ok`, `error`, and `cols`.
 #'
-#' @keywords internal
+#' @noRd
 fd_compute_eval_step <- function(step,
                                  step_name,
                                  working_data,
@@ -544,7 +544,7 @@ fd_compute_eval_step <- function(step,
 #'
 #' @return A list with elements `ok`, `error`, and `cols`.
 #'
-#' @keywords internal
+#' @noRd
 fd_compute_eval_column_step <- function(step,
                                         step_name,
                                         mask,
@@ -627,7 +627,7 @@ fd_compute_eval_column_step <- function(step,
 #'
 #' @return A list with elements `ok`, `error`, and `cols`.
 #'
-#' @keywords internal
+#' @noRd
 fd_compute_eval_block_step <- function(step,
                                        step_name,
                                        working_data,
@@ -744,7 +744,7 @@ fd_compute_eval_block_step <- function(step,
 #'
 #' @return A list with elements `ok`, `error`, and `result`.
 #'
-#' @keywords internal
+#' @noRd
 fd_compute_validate_column_result <- function(x, n, name) {
   if (is.null(x)) {
     return(list(
@@ -810,7 +810,7 @@ fd_compute_validate_column_result <- function(x, n, name) {
 #'
 #' @return A list with elements `ok`, `error`, and `result`.
 #'
-#' @keywords internal
+#' @noRd
 fd_compute_validate_block_result <- function(res,
                                              n,
                                              step_name,
@@ -987,7 +987,7 @@ fd_compute_validate_block_result <- function(res,
 #'   ordered accordingly, with missing expected columns filled by `NA`.
 #'
 #' @family featdelta compute helpers
-#' @keywords internal
+#' @noRd
 fd_compute_complete_expected_block_outputs <- function(res, expected_names, n) {
   if (is.null(expected_names)) {
     return(res)
@@ -1013,7 +1013,7 @@ fd_compute_complete_expected_block_outputs <- function(res, expected_names, n) {
 #'
 #' @return Block result.
 #'
-#' @keywords internal
+#' @noRd
 fd_compute_call_block_function <- function(fn, working_data) {
   fmls <- formals(fn)
 
@@ -1055,7 +1055,7 @@ fd_compute_call_block_function <- function(fn, working_data) {
 #'   }
 #'
 #' @family featdelta compute helpers
-#' @keywords internal
+#' @noRd
 fd_compute_diagnose_error <- function(err) {
   raw_msg <- if (inherits(err, "error")) {
     conditionMessage(err)
@@ -1131,7 +1131,7 @@ fd_compute_diagnose_error <- function(err) {
 #' @return Character scalar.
 #'
 #' @family featdelta compute helpers
-#' @keywords internal
+#' @noRd
 fd_compute_format_diagnostic_message <- function(diag) {
   if (!is.list(diag) || is.null(diag$message)) {
     return("Unknown compute error.")
@@ -1156,7 +1156,7 @@ fd_compute_format_diagnostic_message <- function(diag) {
 #'   `fd_compute()`, otherwise `FALSE`.
 #'
 #' @family featdelta compute helpers
-#' @keywords internal
+#' @noRd
 fd_compute_is_supported_result <- function(x) {
   is.atomic(x) ||
     inherits(x, "Date") ||

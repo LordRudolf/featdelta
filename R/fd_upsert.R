@@ -808,7 +808,7 @@ fd_upsert_build_report <- function(
 #' Performs minimal type normalization to improve DBI write compatibility.
 #' Currently converts factor columns to character. Leaves Date/POSIXct unchanged.
 #'
-#' @keywords internal
+#' @noRd
 normalize_features_df <- function(df) {
   for (nm in names(df)) {
     if (is.factor(df[[nm]])) df[[nm]] <- as.character(df[[nm]])
@@ -822,7 +822,7 @@ normalize_features_df <- function(df) {
 #' Creates a unique, dialect-safe staging table name for use inside a transaction/chunk.
 #' Names use only `[A-Za-z0-9_]` to avoid quoting issues across DBs.
 #'
-#' @keywords internal
+#' @noRd
 get_stage_name <- function(i) {
   # Only [A-Za-z0-9_] to avoid quoting surprises across dialects.
   rnd <- paste(sample(c(letters, LETTERS, 0:9), 8, replace = TRUE), collapse = "")
@@ -834,7 +834,7 @@ get_stage_name <- function(i) {
 #' Returns a list of integer index vectors partitioning `1:n` into chunks of size
 #' `chunk_size`. If `chunk_size` is NULL, returns a single chunk containing all rows.
 #'
-#' @keywords internal
+#' @noRd
 make_chunks <- function(n, chunk_size) {
   if (n == 0L) return(list(integer(0)))
   if (is.null(chunk_size)) return(list(seq_len(n)))

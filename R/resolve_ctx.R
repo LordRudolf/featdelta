@@ -38,7 +38,7 @@
 #' @return The updated context object, not yet finalized.
 #'
 #' @family featdelta context helpers
-#' @keywords internal
+#' @noRd
 ctx_apply_overrides <- function(
     ctx,
     raw_table = NULL,
@@ -101,7 +101,7 @@ ctx_apply_overrides <- function(
 #' @return The same context object with derived fields added.
 #'
 #' @family featdelta context helpers
-#' @keywords internal
+#' @noRd
 ctx_build_derived <- function(ctx) {
   ctx$dialect <- ctx$dialect %||% detect_backend(ctx$con)
 
@@ -156,7 +156,7 @@ ctx_build_derived <- function(ctx) {
 #' @return The validated context object.
 #'
 #' @family featdelta context helpers
-#' @keywords internal
+#' @noRd
 ctx_validate <- function(ctx) {
   stopifnot(is.list(ctx))
 
@@ -208,7 +208,7 @@ ctx_validate <- function(ctx) {
 
 #' Finalize a featdelta context
 #'
-#' @keywords internal
+#' @noRd
 ctx_finalize <- function(ctx) {
   class(ctx) <- unique(c(class(ctx), "featdelta_ctx", "list"))
   ctx <- ctx_build_derived(ctx)
@@ -239,7 +239,7 @@ ctx_finalize <- function(ctx) {
 #' @return A finalized context object of class `"featdelta_ctx"`.
 #'
 #' @family featdelta context helpers
-#' @keywords internal
+#' @noRd
 make_ctx_from_args <- function(
     con,
     raw_table = NULL,
@@ -326,7 +326,7 @@ make_ctx_from_args <- function(
 #' cleaned SQL strings should not be stored in the context.
 #'
 #' @family featdelta context helpers
-#' @keywords internal
+#' @noRd
 resolve_ctx <- function(
     con_or_fd,
     ...,

@@ -172,13 +172,6 @@ defs <- fd_define(
 \seealso{
 Other featdelta defs helpers: 
 \code{\link{fd_block}()},
-\code{\link{fd_define_validate_step_defs}()},
-\code{\link{fd_define_validate_step_names}()},
-\code{\link{maybe_eval_fd_block_call}()},
-\code{\link{maybe_unwrap_symbol}()},
-\code{\link{normalize_block_step}()},
-\code{\link{normalize_definition_step}()},
-\code{\link{normalize_feature_input}()},
 \code{\link{print.featdelta_defs}()},
 \code{\link{summary.featdelta_defs}()}
 }

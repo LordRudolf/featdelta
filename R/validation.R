@@ -63,7 +63,7 @@
 #' single central validator rather than many top-level validation functions.
 #'
 #' @family featdelta validation helpers
-#' @keywords internal
+#' @noRd
 validate_general_args <- function(
     data = NULL,
     con = NULL,
