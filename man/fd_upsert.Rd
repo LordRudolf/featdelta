@@ -124,8 +124,9 @@ running concurrent writes to the same feature table. Concurrent writes to
 different feature tables are independent.
 }
 \examples{
-\dontrun{
+if (requireNamespace("RSQLite", quietly = TRUE)) {
 con <- DBI::dbConnect(RSQLite::SQLite(), ":memory:")
+on.exit(DBI::dbDisconnect(con), add = TRUE)
 
 feats <- data.frame(
   id = c(1, 2, 3),
@@ -141,7 +142,8 @@ r1 <- fd_upsert(
   key = "id",
   create_table = TRUE,
   alter_table = FALSE,
-  update_table = TRUE
+  update_table = TRUE,
+  verbose = FALSE
 )
 
 # Upsert: update ids 2-3, insert id 4
@@ -156,7 +158,8 @@ r2 <- fd_upsert(
   features_df = feats2,
   feat_table_name = "features_tbl",
   key = "id",
-  update_table = TRUE
+  update_table = TRUE,
+  verbose = FALSE
 )
 
 # Schema evolution: add a new feature column
@@ -173,7 +176,8 @@ r3 <- fd_upsert(
   feat_table_name = "features_tbl",
   key = "id",
   alter_table = TRUE,
-  update_table = TRUE
+  update_table = TRUE,
+  verbose = FALSE
 )
 }
 

@@ -116,7 +116,14 @@ These columns are left untouched; the package does not drop, rename, or retire
 columns automatically.
 }
 \examples{
-\dontrun{
+if (requireNamespace("RSQLite", quietly = TRUE)) {
+con <- DBI::dbConnect(RSQLite::SQLite(), ":memory:")
+on.exit(DBI::dbDisconnect(con), add = TRUE)
+
+raw_cars <- mtcars
+raw_cars$id <- seq_len(nrow(raw_cars))
+DBI::dbWriteTable(con, "raw_cars", raw_cars)
+
 defs <- fd_define(
   hp_per_cyl = hp / cyl,
   engine_ratios = fd_block({
@@ -129,12 +136,13 @@ defs <- fd_define(
 
 res <- fd_run(
   con = con,
-  sql = "select * from raw_schema.raw_table",
+  sql = "SELECT * FROM raw_cars",
   defs = defs,
-  key = "application_id",
-  feat_table_name = "feat_schema.features",
-  verbose = TRUE
+  key = "id",
+  feat_table_name = "features",
+  verbose = FALSE
 )
+res$success
 }
 
 }

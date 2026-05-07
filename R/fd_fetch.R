@@ -45,15 +45,14 @@
 #' (if computed), `executed_sql`, and `n_rows`.
 #'
 #' @examples
-#' \dontrun{
-#' library(DBI)
-#' library(RSQLite)
+#' if (requireNamespace("RSQLite", quietly = TRUE)) {
+#' con <- DBI::dbConnect(RSQLite::SQLite(), ":memory:")
+#' on.exit(DBI::dbDisconnect(con), add = TRUE)
 #'
-#' con <- dbConnect(RSQLite::SQLite(), ":memory:")
-#' dbExecute(con, "CREATE TABLE raw (id INTEGER, x INTEGER)")
-#' dbExecute(con, "CREATE TABLE r_variables_table (id INTEGER)")
-#' dbExecute(con, "INSERT INTO raw (id, x) VALUES (1,10), (2,20), (3,30), (4,40), (5,50)")
-#' dbExecute(con, "INSERT INTO r_variables_table (id) VALUES (1), (2), (4)")
+#' DBI::dbExecute(con, "CREATE TABLE raw (id INTEGER, x INTEGER)")
+#' DBI::dbExecute(con, "CREATE TABLE r_variables_table (id INTEGER)")
+#' DBI::dbExecute(con, "INSERT INTO raw (id, x) VALUES (1,10), (2,20), (3,30), (4,40), (5,50)")
+#' DBI::dbExecute(con, "INSERT INTO r_variables_table (id) VALUES (1), (2), (4)")
 #'
 #' # Returns ids 3 and 5 only (rows not yet present in the features table)
 #' new_rows <- fd_fetch(
@@ -62,8 +61,6 @@
 #'   key = "id",
 #'   feat_table_name = "r_variables_table"
 #' )
-#'
-#' dbDisconnect(con)
 #' }
 #'
 #' @export

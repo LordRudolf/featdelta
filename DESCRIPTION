@@ -6,7 +6,7 @@ Authors@R: person(given = "Rudolfs", family = "Kregers", role = c("aut", "cre"),
     email = "rudolfs.kregers@gmail.com")
 Author: Rudolfs Kregers [aut, cre]
 Maintainer: Rudolfs Kregers <rudolfs.kregers@gmail.com>
-Description: Define feature logic in R, compute only new or unprocessed
+Description: Define feature logic, compute only new or unprocessed
     rows, and persist the resulting flat feature table in a database.
     The package provides an explicit incremental pipeline for fetching
     source rows, computing feature definitions, and upserting computed

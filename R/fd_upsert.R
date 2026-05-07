@@ -97,8 +97,9 @@
 #' }
 #'
 #' @examples
-#' \dontrun{
+#' if (requireNamespace("RSQLite", quietly = TRUE)) {
 #' con <- DBI::dbConnect(RSQLite::SQLite(), ":memory:")
+#' on.exit(DBI::dbDisconnect(con), add = TRUE)
 #'
 #' feats <- data.frame(
 #'   id = c(1, 2, 3),
@@ -114,7 +115,8 @@
 #'   key = "id",
 #'   create_table = TRUE,
 #'   alter_table = FALSE,
-#'   update_table = TRUE
+#'   update_table = TRUE,
+#'   verbose = FALSE
 #' )
 #'
 #' # Upsert: update ids 2-3, insert id 4
@@ -129,7 +131,8 @@
 #'   features_df = feats2,
 #'   feat_table_name = "features_tbl",
 #'   key = "id",
-#'   update_table = TRUE
+#'   update_table = TRUE,
+#'   verbose = FALSE
 #' )
 #'
 #' # Schema evolution: add a new feature column
@@ -146,7 +149,8 @@
 #'   feat_table_name = "features_tbl",
 #'   key = "id",
 #'   alter_table = TRUE,
-#'   update_table = TRUE
+#'   update_table = TRUE,
+#'   verbose = FALSE
 #' )
 #' }
 #'

@@ -3,3 +3,4 @@
 ^\.Rhistory$
 ^R/README\.md$
 ^inst/dev\.R$
+^CRAN-SUBMISSION$
