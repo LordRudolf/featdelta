@@ -4,3 +4,4 @@
 ^R/README\.md$
 ^inst/dev\.R$
 ^CRAN-SUBMISSION$
+^cran-comments\.md$
